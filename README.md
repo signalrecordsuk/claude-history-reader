@@ -10,6 +10,11 @@ Grab the latest `.dmg` from the [Releases](../../releases) page.
 
 Or just open `index.html` in your browser — drag and drop any `.jsonl` file to view it.
 
+## Live Demo
+
+https://signalrecords.co.uk/apps/claude-history-viewer/index.html
+(all files stay local only, nothing gets uploaded to the web)
+
 ## Features
 
 - **Message view** — color-coded by type: user (green), assistant (gray), tool calls (blue), edits (yellow), tool results (orange), session summaries (red)
@@ -24,7 +29,7 @@ Or just open `index.html` in your browser — drag and drop any `.jsonl` file to
 
 - **Load Previous Session** — button at the top of the chat loads the previous session above the current one; shift+click replaces the current session entirely
 
-- **Manual Compact** — select messages to remove manually from context, plus auto-mark tool results etc for removal, then commit to write a compacted JSONL (with backup). Unedited version is retained and linked at each deletion point in case Claude needs to reread anythign that was removed.
+- **Manual Compact (EXPERIMENTAL FEATURE)** — select messages to remove manually from context, plus auto-mark tool results etc for removal, then commit to write a compacted JSONL (with backup). Unedited version is retained and linked at each deletion point in case Claude needs to reread anythign that was removed. End claude session then resume with claude -r to pick up the edited context.
 
 - **Electron extras** — project picker, auto-load from `~/.claude/projects/`, direct file read/write for compaction
 
