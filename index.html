@@ -1789,8 +1789,33 @@
             if (!compactMode && subagentStack.length === 0) {
                 const btn = document.createElement('button');
                 btn.className = 'load-prev-btn';
-                btn.textContent = 'LOAD PREVIOUS SESSION';
+                btn.textContent = 'LOAD PREVIOUS SESSION (click or drop .jsonl here)';
                 btn.onclick = loadPreviousSession;
+                btn.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    btn.style.background = 'rgba(224, 209, 94, 0.15)';
+                    btn.style.borderStyle = 'solid';
+                });
+                btn.addEventListener('dragleave', () => {
+                    btn.style.background = '';
+                    btn.style.borderStyle = 'dashed';
+                });
+                btn.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    btn.style.background = '';
+                    btn.style.borderStyle = 'dashed';
+                    const file = e.dataTransfer.files[0];
+                    if (file) {
+                        const shiftHeld = e.shiftKey;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            prependOrReplacePrevious(ev.target.result, file.name, null, shiftHeld);
+                        };
+                        reader.readAsText(file);
+                    }
+                });
                 chat.appendChild(btn);
             }
 
