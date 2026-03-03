@@ -1,0 +1,2250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Chat History Reader</title>
+    <style>
+        /* === Theme: Blue-on-Grey Terminal === */
+        :root {
+            --black:    #000000;
+            --black-lt: #1a1a1a;
+            --grey:     #595959;
+            --grey-lt:  #979797;
+            --grey-hi:  #a7a7a7;
+            --red:      #f06e6e;
+            --red-lt:   #ff7e7e;
+            --orange:   #ffb366;
+            --orange-lt:#ffc570;
+            --yellow:   #e0d15e;
+            --yellow-lt:#f0e670;
+            --green:    #7dcc7d;
+            --green-lt: #8ae08a;
+            --blue:     #5eb5e0;
+            --blue-lt:  #70c5f0;
+            --purple:   #a893d8;
+            --purple-lt:#b9a2ee;
+            --pink:     #ffabab;
+            --pink-lt:  #ffbcbc;
+            --white:    #dedede;
+            --white-lt: #eeeeee;
+
+            --bg:       #595959;
+            --bg-raised:#4a4a4a;
+            --bg-inset: #1a1a1a;
+            --border:   #6e6e6e;
+            --text:     var(--white);
+            --text-dim: var(--grey-lt);
+            --text-faint:#888;
+        }
+
+        @font-face {
+            font-family: 'BerkeleyMono';
+            src: local('Berkeley Mono'), local('BerkeleyMono-Regular');
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            font-size: 12px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* === Controls Bar === */
+        .controls {
+            position: sticky;
+            top: 0;
+            background: var(--bg-raised);
+            padding: 6px 12px;
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .controls label { color: var(--text-dim); font-size: 11px; }
+        .controls input[type="file"] {
+            color: var(--text-dim);
+            font-size: 11px;
+            font-family: inherit;
+        }
+        .controls input[type="datetime-local"] {
+            background: var(--bg-inset);
+            color: var(--blue-lt);
+            border: 1px solid var(--border);
+            padding: 3px 8px;
+            border-radius: 2px;
+            font-family: inherit;
+            font-size: 11px;
+        }
+        .controls input[type="datetime-local"]:focus {
+            border-color: var(--blue);
+            outline: none;
+        }
+        .controls button {
+            background: var(--grey);
+            color: var(--white-lt);
+            border: none;
+            padding: 4px 12px;
+            border-radius: 2px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            transition: background 0.1s;
+        }
+        .controls button:hover { background: var(--grey-lt); color: var(--black); }
+        .stats { color: var(--text-faint); font-size: 10px; letter-spacing: 0.5px; }
+
+        /* === Chat Container === */
+        .chat {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2px 4px;
+        }
+
+        /* === Message Blocks === */
+        .message {
+            margin: 0;
+            padding: 3px 10px 1.35em 10px;
+            font-size: 12px;
+            line-height: 1.35;
+            border-left: 3px solid transparent;
+        }
+        .message.user {
+            background: rgba(125, 204, 125, 0.10);
+            border-left-color: var(--green);
+        }
+        .message.assistant {
+            background: rgba(0, 0, 0, 0.15);
+            border-left-color: var(--grey-lt);
+        }
+        .message.tool {
+            background: rgba(94, 181, 224, 0.08);
+            border-left-color: var(--blue);
+            font-size: 11px;
+        }
+        .message.edit {
+            background: rgba(224, 209, 94, 0.08);
+            border-left-color: var(--yellow);
+        }
+        .message.toolresult {
+            background: rgba(255, 179, 102, 0.08);
+            border-left-color: var(--orange);
+        }
+        .message.summary {
+            background: rgba(240, 110, 110, 0.10);
+            border-left-color: var(--red);
+        }
+        .message.file-spacer {
+            background: rgba(255, 0, 0, 0.15);
+            border-left: 4px solid #ff0000;
+            text-align: center;
+            font-weight: bold;
+            color: #ff4444;
+            padding: 8px 12px;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+        .message.file-spacer .content {
+            white-space: normal;
+        }
+
+        /* === Message Header === */
+        .msg-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 1px 0;
+            line-height: 1;
+        }
+        .timestamp {
+            font-size: 10px;
+            color: var(--text-faint);
+        }
+        .role {
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 9px;
+            letter-spacing: 1.2px;
+        }
+        .user .role        { color: var(--green); }
+        .assistant .role   { color: var(--grey-hi); }
+        .tool .role        { color: var(--blue); }
+        .edit .role        { color: var(--yellow); }
+        .toolresult .role  { color: var(--orange); }
+        .summary .role     { color: var(--red); }
+
+        .msg-header .marked-label {
+            color: var(--red);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-left: auto;
+            opacity: 0.8;
+        }
+        .msg-header .delete-toggle {
+            float: none;
+            margin-left: 0;
+        }
+
+        .content { color: var(--white); margin: 0; white-space: pre-wrap; word-wrap: break-word; }
+        .content:empty { display: none; }
+
+        /* === Collapsed State === */
+        .message.collapsed {
+            padding: 2px 10px;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+            opacity: 0.6;
+            max-height: 1.6em;
+        }
+        .message.collapsed:hover { opacity: 0.85; }
+        .message.collapsed .msg-header { display: inline; }
+        .message.collapsed .timestamp,
+        .message.collapsed .role,
+        .message.collapsed .content {
+            display: inline;
+            margin: 0;
+            white-space: nowrap;
+        }
+        .message.collapsed .timestamp { margin-right: 8px; }
+        .message.collapsed .role { margin-right: 8px; }
+        .message.collapsed .marked-label { display: none; }
+        .message:not(.user) { cursor: pointer; }
+
+        /* === Edit Blocks === */
+        .edit-block {
+            background: var(--bg-inset);
+            padding: 4px 6px;
+            margin: 1px 0;
+            border-radius: 2px;
+            border: 1px solid var(--border);
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .edit-label {
+            color: var(--text-faint);
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin: 0;
+        }
+        .file-path {
+            color: var(--yellow);
+            font-weight: 600;
+            margin: 0;
+        }
+
+        /* === Dropzone === */
+        .hidden { display: none !important; }
+        #dropzone {
+            border: 1px dashed var(--border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+            min-height: calc(100vh - 44px);
+            color: var(--text-faint);
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        #dropzone.dragover {
+            border-color: var(--blue);
+            background: rgba(94, 181, 224, 0.1);
+        }
+
+        /* === Compact Mode === */
+        .compact-btn {
+            background: var(--red) !important;
+            color: var(--black) !important;
+            font-weight: 700 !important;
+        }
+        .compact-btn:hover { background: var(--red-lt) !important; }
+        .compact-btn.active {
+            background: var(--green) !important;
+            color: var(--black) !important;
+        }
+        .compact-btn.active:hover { background: var(--green-lt) !important; }
+        .commit-btn {
+            background: var(--orange) !important;
+            color: var(--black) !important;
+            font-weight: 700 !important;
+        }
+        .commit-btn:hover { background: var(--orange-lt) !important; }
+
+        #normalControls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        #compactControls {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            flex: 1;
+        }
+        #compactControls .compact-info {
+            color: var(--text-dim);
+            font-size: 10px;
+            letter-spacing: 0.3px;
+        }
+        .controls-right {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            margin-left: auto;
+        }
+
+        /* === Tool Filters === */
+        .tool-filters {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .tool-filters label {
+            color: var(--white);
+            font-size: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            background: var(--bg-inset);
+            padding: 2px 7px;
+            border-radius: 2px;
+            border: 1px solid var(--border);
+            transition: border-color 0.1s;
+        }
+        .tool-filters label:hover {
+            border-color: var(--blue);
+            color: var(--blue-lt);
+        }
+        .tool-filters input[type="checkbox"] {
+            cursor: pointer;
+            accent-color: var(--blue);
+        }
+        .compact-stats {
+            color: var(--text-faint);
+            font-size: 10px;
+            letter-spacing: 0.3px;
+        }
+
+        /* === Marked for Deletion === */
+        .message.marked-delete {
+            opacity: 0.35;
+            border-left-color: var(--red) !important;
+        }
+        .delete-toggle {
+            background: var(--red);
+            color: var(--black);
+            border: none;
+            padding: 1px 8px;
+            border-radius: 2px;
+            font-size: 9px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .delete-toggle:hover { background: var(--red-lt); }
+        .delete-toggle.undo { background: var(--green); }
+        .delete-toggle.undo:hover { background: var(--green-lt); }
+
+        /* === Project Picker Modal === */
+        #projectPicker {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .picker-box {
+            background: var(--bg-raised);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .picker-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .picker-header span {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: var(--blue);
+            text-transform: uppercase;
+        }
+        .picker-header button {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            padding: 2px 8px;
+        }
+        .picker-header button:hover { color: var(--white); }
+        .picker-list {
+            overflow-y: auto;
+            flex: 1;
+        }
+        .picker-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            transition: background 0.08s;
+        }
+        .picker-item:hover { background: rgba(94, 181, 224, 0.08); }
+        .picker-item-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--white);
+        }
+        .picker-item-meta {
+            font-size: 10px;
+            color: var(--text-faint);
+            text-align: right;
+        }
+        .picker-item-file {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 1px;
+        }
+        .picker-loading {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+        .picker-footer {
+            padding: 6px 12px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .picker-footer button {
+            background: var(--grey);
+            color: var(--white-lt);
+            border: none;
+            padding: 3px 10px;
+            border-radius: 2px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .picker-footer button:hover { background: var(--grey-lt); color: var(--black); }
+        .picker-footer .hint {
+            font-size: 9px;
+            color: var(--text-faint);
+        }
+
+        /* === Scrollbar === */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-raised); }
+        ::-webkit-scrollbar-thumb { background: var(--grey-lt); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--white); }
+
+        /* === Selection === */
+        ::selection { background: rgba(94, 181, 224, 0.25); }
+
+        /* === Subagent Banner === */
+        .subagent-banner {
+            background: var(--yellow);
+            color: var(--black);
+            text-align: center;
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 37px;
+            z-index: 99;
+            display: none;
+        }
+        .subagent-banner.visible { display: block; }
+
+        /* === View Subagent Button === */
+        .view-subagent-btn {
+            background: var(--yellow);
+            color: var(--black);
+            border: none;
+            padding: 2px 8px;
+            border-radius: 2px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            margin-left: 8px;
+            transition: background 0.1s;
+        }
+        .view-subagent-btn:hover { background: var(--yellow-lt); }
+
+        /* === Subagent Drop Zone (browser mode) === */
+        .subagent-dropzone {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            color: var(--white);
+            font-size: 14px;
+        }
+        .subagent-dropzone .drop-path {
+            color: var(--yellow);
+            font-size: 12px;
+            margin: 12px 0;
+            word-break: break-all;
+            max-width: 600px;
+            text-align: center;
+        }
+        .subagent-dropzone .drop-area {
+            border: 2px dashed var(--yellow);
+            padding: 40px 60px;
+            border-radius: 8px;
+            margin-top: 16px;
+            cursor: pointer;
+        }
+        .subagent-dropzone .drop-area.dragover {
+            background: rgba(224, 209, 94, 0.15);
+        }
+        .subagent-dropzone .drop-cancel {
+            margin-top: 20px;
+            color: var(--text-dim);
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .subagent-dropzone .drop-cancel:hover { color: var(--white); }
+
+        /* === Search Bar === */
+        .search-bar {
+            position: sticky;
+            top: 37px;
+            z-index: 98;
+            background: var(--bg-raised);
+            border-bottom: 1px solid var(--border);
+            padding: 4px 12px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        .search-bar.visible { display: flex; }
+        .subagent-banner.visible + .search-bar { top: 59px; }
+        .search-bar input {
+            background: var(--bg-inset);
+            color: var(--blue-lt);
+            border: 1px solid var(--border);
+            padding: 3px 8px;
+            border-radius: 2px;
+            font-family: inherit;
+            font-size: 11px;
+            flex: 1;
+            max-width: 300px;
+        }
+        .search-bar input:focus { border-color: var(--blue); outline: none; }
+        .search-bar .search-info {
+            color: var(--text-dim);
+            font-size: 10px;
+        }
+        .search-bar button {
+            background: var(--grey);
+            color: var(--white-lt);
+            border: none;
+            padding: 3px 8px;
+            border-radius: 2px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .search-bar button:hover { background: var(--grey-lt); color: var(--black); }
+        .search-highlight {
+            background: rgba(224, 209, 94, 0.4);
+            border-radius: 1px;
+        }
+        .search-highlight-current {
+            background: var(--yellow);
+            color: var(--black);
+            border-radius: 1px;
+        }
+
+        /* === Load Previous Button === */
+        .load-prev-btn {
+            display: block;
+            width: 100%;
+            background: transparent;
+            color: var(--yellow);
+            border: 1px dashed var(--yellow);
+            padding: 8px;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            border-radius: 3px;
+            transition: background 0.1s;
+        }
+        .load-prev-btn:hover { background: rgba(224, 209, 94, 0.1); }
+    </style>
+</head>
+<body>
+    <div class="controls" id="mainControls">
+        <div id="normalControls">
+            <button onclick="openProjectPicker()">LOAD</button>
+            <input type="file" id="fileInput" accept=".jsonl,.json" style="display:none">
+            <input type="datetime-local" id="startTime">
+            <input type="datetime-local" id="endTime">
+            <button id="filterToggle" onclick="toggleFilter(event)">UPDATE</button>
+            <button id="collapseToggle" onclick="toggleCollapse()">COLLAPSE</button>
+        </div>
+        <div id="compactControls" class="hidden">
+            <div class="compact-info">Showing context window only. X = mark for removal. Tool types below auto-mark all uses.</div>
+            <div class="tool-filters" id="toolFilters"></div>
+            <div class="compact-stats" id="compactStats"></div>
+        </div>
+        <div class="controls-right">
+            <button class="compact-btn" id="compactToggle" onclick="toggleCompactMode()">MANUAL COMPACT</button>
+            <button class="commit-btn hidden" id="commitBtn" onclick="commitCompaction()">COMMIT</button>
+            <span class="stats" id="stats"></span>
+        </div>
+    </div>
+
+    <div class="subagent-banner" id="subagentBanner">SUBAGENT VIEWER (esc to return)</div>
+    <div class="search-bar" id="searchBar">
+        <input type="text" id="searchInput" placeholder="Search...">
+        <button onclick="searchNext()">NEXT</button>
+        <button onclick="searchPrev()">PREV</button>
+        <span class="search-info" id="searchInfo"></span>
+    </div>
+    <div id="dropzone">drop .jsonl file here &mdash; or click LOAD above</div>
+    <div class="chat" id="chat"></div>
+
+    <script>
+        let allMessages = [];
+        let allRawLines = [];       // every raw JSONL line parsed
+        let compactMode = false;
+        let markedForDeletion = new Set();  // indices into allRawLines (tool result+use pairs)
+        let markedForReplace = new Map();   // index -> replacement text (user/assistant text)
+        let toolUseToResult = {};   // tool_use id -> rawLine index of the tool_result user message
+        let toolResultToUses = {};  // rawLine index of tool_result user msg -> [tool_use block ids]
+        let toolUseIdToLineIndex = {}; // tool_use block id -> rawLine index of the assistant message containing it
+        let toolUseIdToName = {};   // tool_use block id -> tool name
+        let toolUseIdToAgentId = {};  // tool_use block id -> agentId (for subagent navigation)
+        let contextWindowStart = 0; // index into allRawLines where context window begins
+        let foundToolTypes = new Set();
+        let backupNumber = 0;       // next backup number (_BU001, _BU002, etc.)
+        let currentFileEarliestTime = null; // earliest timestamp in the primary loaded file
+        let multiFileMessages = null;       // combined messages from multiple files (set by filter)
+        let subagentStack = [];  // stack of saved states for subagent navigation
+
+        const isElectron = !!window.electronAPI;
+
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const chat = document.getElementById('chat');
+        const stats = document.getElementById('stats');
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file) loadFile(file);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) loadFile(file);
+        });
+
+        // === Project Picker ===
+
+        function cleanProjectName(dirName) {
+            // -Users-readytoriot-Claude-HISTORY-READER -> HISTORY-READER
+            const claudeIdx = dirName.indexOf('-Claude-');
+            if (claudeIdx !== -1) return dirName.slice(claudeIdx + 8);
+            // Fallback: strip leading dash and path components, show last segment
+            const parts = dirName.replace(/^-/, '').split('-');
+            if (parts.length > 2) return parts.slice(-2).join('-');
+            return dirName.replace(/^-/, '');
+        }
+
+        function closePicker() {
+            const el = document.getElementById('projectPicker');
+            if (el) el.remove();
+        }
+
+        function showPickerModal(projects) {
+            closePicker();
+            const modal = document.createElement('div');
+            modal.id = 'projectPicker';
+            modal.onclick = (e) => { if (e.target === modal) closePicker(); };
+
+            const items = projects.map((p, i) => {
+                const ago = timeAgo(new Date(p.lastModified));
+                const newestFile = p.files[0];
+                const sizeKB = Math.round(newestFile.size / 1024);
+                return `<div class="picker-item" data-idx="${i}">
+                    <div>
+                        <div class="picker-item-name">${escapeHtml(p.displayName)}</div>
+                        <div class="picker-item-file">${escapeHtml(newestFile.name)} (${sizeKB}KB)</div>
+                    </div>
+                    <div class="picker-item-meta">
+                        ${ago}<br>${p.fileCount} session${p.fileCount !== 1 ? 's' : ''}
+                    </div>
+                </div>`;
+            }).join('');
+
+            modal.innerHTML = `<div class="picker-box">
+                <div class="picker-header">
+                    <span>Select Session</span>
+                    <button onclick="closePicker()">ESC</button>
+                </div>
+                <div class="picker-list">${items || '<div class="picker-loading">No sessions found in ~/.claude/projects/<br><br>Use BROWSE FILE below to locate your .jsonl files</div>'}</div>
+                <div class="picker-footer">
+                    <button onclick="closePicker(); browseAndLoad()">BROWSE FILE</button>
+                    <span class="hint">${items ? 'click project to load newest session' : 'select any .jsonl file on disk'}</span>
+                </div>
+            </div>`;
+
+            document.body.appendChild(modal);
+
+            // Click handler for items
+            modal.querySelectorAll('.picker-item').forEach(el => {
+                el.addEventListener('click', async () => {
+                    const idx = parseInt(el.dataset.idx);
+                    const p = projects[idx];
+                    const filePath = p.files[0].path;
+                    closePicker();
+                    loadFileFromPath(filePath);
+                });
+            });
+
+            // ESC to close
+            const escHandler = (e) => {
+                if (e.key === 'Escape') { closePicker(); document.removeEventListener('keydown', escHandler); }
+            };
+            document.addEventListener('keydown', escHandler);
+        }
+
+        function timeAgo(date) {
+            const secs = Math.floor((Date.now() - date.getTime()) / 1000);
+            if (secs < 60) return 'just now';
+            const mins = Math.floor(secs / 60);
+            if (mins < 60) return `${mins}m ago`;
+            const hrs = Math.floor(mins / 60);
+            if (hrs < 24) return `${hrs}h ago`;
+            const days = Math.floor(hrs / 24);
+            if (days < 30) return `${days}d ago`;
+            return date.toLocaleDateString();
+        }
+
+        async function browseAndLoad() {
+            if (!isElectron) {
+                document.getElementById('fileInput').click();
+                return;
+            }
+            // Default to the folder of the last loaded file
+            let defaultDir = null;
+            if (window._loadedFilePath) {
+                defaultDir = window._loadedFilePath.replace(/\/[^/]+$/, '');
+            }
+            const filePath = await window.electronAPI.browseFile(defaultDir);
+            if (filePath) {
+                loadFileFromPath(filePath);
+            }
+        }
+
+        async function openProjectPicker() {
+            if (!isElectron) {
+                // Browser fallback: use file input
+                document.getElementById('fileInput').click();
+                return;
+            }
+
+            // Show loading
+            closePicker();
+            const loadingModal = document.createElement('div');
+            loadingModal.id = 'projectPicker';
+            loadingModal.innerHTML = `<div class="picker-box"><div class="picker-loading">Scanning projects...</div></div>`;
+            document.body.appendChild(loadingModal);
+
+            const projects = await window.electronAPI.scanProjects();
+            // Add displayName to each project
+            for (const p of projects) {
+                p.displayName = cleanProjectName(p.dirName);
+            }
+            showPickerModal(projects);
+        }
+
+        async function loadFileFromPath(filePath) {
+            const content = await window.electronAPI.readFile(filePath);
+            // Extract filename from path
+            const fileName = filePath.split('/').pop();
+            window._loadedFileName = fileName;
+            window._loadedFilePath = filePath;
+            parseAndRender(content);
+        }
+
+        function loadFile(file) {
+            // Browser fallback: read via FileReader
+            window._loadedFileName = file.name;
+            window._loadedFilePath = null;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                parseAndRender(e.target.result);
+            };
+            reader.readAsText(file);
+        }
+
+        function parseAndRender(content) {
+            window._rawFileContent = content;
+            const lines = content.split('\n').filter(l => l.trim());
+            allMessages = [];
+            allRawLines = [];
+            backupNumber = 0;
+
+            for (const line of lines) {
+                try {
+                    const obj = JSON.parse(line);
+                    allRawLines.push(obj);
+                } catch (err) {}
+            }
+
+            // Extract session project path from JSONL data for backup references
+            // Sessions live in ~/.claude/projects/<project-slug>/<sessionId>.jsonl
+            window._sessionProjectPath = '';
+            for (const obj of allRawLines) {
+                if (obj.sessionId && obj.cwd) {
+                    // Derive the project slug from cwd: replace path separators with dashes
+                    const projectSlug = obj.cwd.replace(/^\//, '').replace(/\//g, '-');
+                    window._sessionProjectPath = `~/.claude/projects/-${projectSlug}/`;
+                    break;
+                }
+            }
+
+            // Build allMessages (user + assistant only, for normal view)
+            allMessages = allRawLines.filter(obj => obj.type === 'user' || obj.type === 'assistant');
+
+            // Build tool use/result mappings
+            buildToolMappings();
+
+            // Reset multi-file state
+            multiFileMessages = null;
+
+            // Set time range
+            currentFileEarliestTime = null;
+            if (allMessages.length > 0) {
+                const times = allMessages.map(m => new Date(m.timestamp)).filter(d => !isNaN(d));
+                if (times.length > 0) {
+                    const min = new Date(Math.min(...times));
+                    const max = new Date(Math.max(...times));
+                    currentFileEarliestTime = min;
+                    document.getElementById('startTime').value = formatDatetimeLocal(min);
+                    document.getElementById('endTime').value = formatDatetimeLocal(max);
+                }
+            }
+
+            dropzone.classList.add('hidden');
+
+            if (compactMode) {
+                exitCompactMode();
+            }
+            renderMessages(allMessages);
+        }
+
+        function buildToolMappings() {
+            toolUseToResult = {};
+            toolResultToUses = {};
+            toolUseIdToLineIndex = {};
+            toolUseIdToName = {};
+            toolUseIdToAgentId = {};
+            foundToolTypes = new Set();
+
+            // Find all tool_use blocks in assistant messages
+            for (let i = 0; i < allRawLines.length; i++) {
+                const obj = allRawLines[i];
+                if (obj.type === 'assistant' && Array.isArray(obj.message?.content)) {
+                    for (const block of obj.message.content) {
+                        if (block.type === 'tool_use') {
+                            toolUseIdToLineIndex[block.id] = i;
+                            toolUseIdToName[block.id] = block.name;
+                            foundToolTypes.add(block.name);
+                        }
+                    }
+                }
+            }
+
+            // Find all tool_result entries in user messages and link them
+            for (let i = 0; i < allRawLines.length; i++) {
+                const obj = allRawLines[i];
+                if (obj.type === 'user' && Array.isArray(obj.message?.content)) {
+                    const toolResults = obj.message.content.filter(item => item.type === 'tool_result');
+                    if (toolResults.length > 0) {
+                        const useIds = [];
+                        for (const tr of toolResults) {
+                            if (tr.tool_use_id) {
+                                toolUseToResult[tr.tool_use_id] = i;
+                                useIds.push(tr.tool_use_id);
+                            }
+                        }
+                        if (useIds.length > 0) {
+                            toolResultToUses[i] = useIds;
+                        }
+                    }
+                }
+            }
+
+            // Find agentId references in toolUseResult fields (for subagent navigation)
+            for (let i = 0; i < allRawLines.length; i++) {
+                const obj = allRawLines[i];
+                if (obj.toolUseResult && obj.toolUseResult.agentId) {
+                    if (Array.isArray(obj.message?.content)) {
+                        for (const item of obj.message.content) {
+                            if (item.type === 'tool_result' && item.tool_use_id &&
+                                toolUseIdToName[item.tool_use_id] === 'Task') {
+                                toolUseIdToAgentId[item.tool_use_id] = obj.toolUseResult.agentId;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Find context window start (last summary/compaction message)
+            contextWindowStart = 0;
+            for (let i = allRawLines.length - 1; i >= 0; i--) {
+                const obj = allRawLines[i];
+                const content = obj.message?.content;
+                if (!content) continue;
+
+                let text = '';
+                if (typeof content === 'string') {
+                    text = content;
+                } else if (Array.isArray(content)) {
+                    for (const item of content) {
+                        if (item.type === 'text' && item.text) text += item.text;
+                        else if (typeof item === 'string') text += item;
+                    }
+                }
+
+                if (text.startsWith('This session is being continued from a previous conversation')) {
+                    contextWindowStart = i;
+                    break;
+                }
+            }
+        }
+
+        function formatDatetimeLocal(date) {
+            const pad = n => n.toString().padStart(2, '0');
+            return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        }
+
+        let filterActive = false;
+
+        async function toggleFilter(e) {
+            if (e && e.shiftKey) {
+                // Shift+click: show all messages, reset time range
+                filterActive = false;
+                multiFileMessages = null;
+                if (allMessages.length > 0) {
+                    const times = allMessages.map(m => new Date(m.timestamp)).filter(d => !isNaN(d));
+                    if (times.length > 0) {
+                        document.getElementById('startTime').value = formatDatetimeLocal(new Date(Math.min(...times)));
+                        document.getElementById('endTime').value = formatDatetimeLocal(new Date(Math.max(...times)));
+                    }
+                }
+                renderMessages(allMessages);
+                return;
+            }
+
+            const start = new Date(document.getElementById('startTime').value);
+            const end = new Date(document.getElementById('endTime').value);
+
+            // Check if we need to load earlier files (Electron only, non-compact)
+            if (isElectron && !compactMode && window._loadedFilePath &&
+                currentFileEarliestTime && start < currentFileEarliestTime) {
+                await loadEarlierFiles(start, end);
+            } else {
+                const filtered = allMessages.filter(m => {
+                    const t = new Date(m.timestamp);
+                    return t >= start && t <= end;
+                });
+                filterActive = true;
+                renderMessages(filtered);
+            }
+        }
+
+        async function loadEarlierFiles(start, end) {
+            const dir = window._loadedFilePath.replace(/\/[^/]+$/, '');
+            const currentFileName = window._loadedFilePath.split('/').pop();
+            const files = await window.electronAPI.listDirJsonl(dir);
+
+            // files are sorted oldest-first by mtime
+            // Find which files might contain messages in the requested range
+            // We need files whose mtime is before our current file's earliest time
+            // plus the current file itself
+            const combined = []; // array of { messages[], fileName }
+
+            for (const f of files) {
+                if (f.name === currentFileName) {
+                    // Add current file's messages (already loaded)
+                    combined.push({ messages: allMessages, fileName: f.name });
+                    continue;
+                }
+
+                // Only consider files older than the current file
+                if (f.mtime >= (currentFileEarliestTime?.getTime() || Infinity)) continue;
+
+                // Read and parse this file
+                try {
+                    const content = await window.electronAPI.readFile(f.path);
+                    const lines = content.split('\n').filter(l => l.trim());
+                    const msgs = [];
+                    for (const line of lines) {
+                        try {
+                            const obj = JSON.parse(line);
+                            if (obj.type === 'user' || obj.type === 'assistant') {
+                                msgs.push(obj);
+                            }
+                        } catch {}
+                    }
+                    if (msgs.length === 0) continue;
+
+                    // Check if any messages fall within the requested time range
+                    const hasRelevant = msgs.some(m => {
+                        const t = new Date(m.timestamp);
+                        return t >= start && t <= end;
+                    });
+                    if (hasRelevant) {
+                        combined.push({ messages: msgs, fileName: f.name });
+                    }
+                } catch {}
+            }
+
+            // Sort file groups by their earliest message timestamp
+            combined.sort((a, b) => {
+                const aTime = Math.min(...a.messages.map(m => new Date(m.timestamp).getTime()).filter(t => !isNaN(t)));
+                const bTime = Math.min(...b.messages.map(m => new Date(m.timestamp).getTime()).filter(t => !isNaN(t)));
+                return aTime - bTime;
+            });
+
+            // Build combined message list with spacer markers, filtered by time range
+            multiFileMessages = [];
+            for (let i = 0; i < combined.length; i++) {
+                if (i > 0) {
+                    // Insert spacer between files
+                    multiFileMessages.push({
+                        _isFileSpacer: true,
+                        _fileName: combined[i].fileName,
+                        _prevFileName: combined[i - 1].fileName,
+                    });
+                }
+                const filtered = combined[i].messages.filter(m => {
+                    const t = new Date(m.timestamp);
+                    return t >= start && t <= end;
+                });
+                multiFileMessages.push(...filtered);
+            }
+
+            filterActive = true;
+            renderMessages(multiFileMessages);
+        }
+
+        // Test result pattern detection
+        const testResultPattern = /Test Files\s+\d+\s+passed\s*\|.*\n\s*Tests\s+\d+\s+passed\s*\|/;
+
+        function hasTestResults(text) {
+            return testResultPattern.test(text);
+        }
+
+        // ---- COMPACT MODE ----
+
+        function toggleCompactMode() {
+            if (compactMode) {
+                exitCompactMode();
+            } else {
+                enterCompactMode();
+            }
+        }
+
+        function enterCompactMode() {
+            if (allRawLines.length === 0) return;
+            compactMode = true;
+            markedForDeletion = new Set();
+            markedForReplace = new Map();
+
+            document.getElementById('compactToggle').classList.add('active');
+            document.getElementById('compactToggle').textContent = 'EXIT COMPACT';
+            document.getElementById('commitBtn').classList.remove('hidden');
+            document.getElementById('normalControls').classList.add('hidden');
+            document.getElementById('compactControls').classList.remove('hidden');
+
+            // Auto-mark file-history-snapshot and progress lines for deletion
+            for (let i = 0; i < allRawLines.length; i++) {
+                const obj = allRawLines[i];
+                if (obj.type === 'file-history-snapshot' || obj.type === 'progress') {
+                    markedForDeletion.add(i);
+                }
+            }
+
+            // Auto-detect test results and mark for replacement
+            for (let i = contextWindowStart; i < allRawLines.length; i++) {
+                const obj = allRawLines[i];
+                const text = getMessageText(obj);
+                if (hasTestResults(text)) {
+                    markedForReplace.set(i, '[full test results removed during manual compaction]');
+                }
+            }
+
+            buildToolFilterPanel();
+            renderCompactView();
+        }
+
+        function exitCompactMode() {
+            compactMode = false;
+            markedForDeletion = new Set();
+            markedForReplace = new Map();
+
+            document.getElementById('compactToggle').classList.remove('active');
+            document.getElementById('compactToggle').textContent = 'MANUAL COMPACT';
+            document.getElementById('commitBtn').classList.add('hidden');
+            document.getElementById('normalControls').classList.remove('hidden');
+            document.getElementById('compactControls').classList.add('hidden');
+
+            renderMessages(allMessages);
+        }
+
+        function getMessageText(obj) {
+            const content = obj.message?.content;
+            if (!content) return '';
+            if (typeof content === 'string') return content;
+            if (Array.isArray(content)) {
+                let text = '';
+                for (const item of content) {
+                    if (item.type === 'text' && item.text) text += item.text + '\n';
+                    else if (typeof item === 'string') text += item + '\n';
+                    else if (item.type === 'tool_result' && item.content) {
+                        if (typeof item.content === 'string') text += item.content + '\n';
+                        else if (Array.isArray(item.content)) {
+                            for (const c of item.content) {
+                                if (c.type === 'text' && c.text) text += c.text + '\n';
+                            }
+                        }
+                    }
+                }
+                return text;
+            }
+            return JSON.stringify(content);
+        }
+
+        function buildToolFilterPanel() {
+            const container = document.getElementById('toolFilters');
+            container.innerHTML = '';
+
+            // Only show tool types found in context window
+            const typesInContext = new Set();
+            for (let i = contextWindowStart; i < allRawLines.length; i++) {
+                const obj = allRawLines[i];
+                if (obj.type === 'assistant' && Array.isArray(obj.message?.content)) {
+                    for (const block of obj.message.content) {
+                        if (block.type === 'tool_use') {
+                            typesInContext.add(block.name);
+                        }
+                    }
+                }
+            }
+
+            // Add a "Code Edits" meta-checkbox if Edit or Write are present
+            const hasCodeEdits = typesInContext.has('Edit') || typesInContext.has('Write');
+            if (hasCodeEdits) {
+                const label = document.createElement('label');
+                label.style.borderRight = '1px solid #555';
+                label.style.paddingRight = '12px';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.addEventListener('change', () => {
+                    if (typesInContext.has('Edit')) onToolFilterChange('Edit', cb.checked);
+                    if (typesInContext.has('Write')) onToolFilterChange('Write', cb.checked);
+                    // Sync individual checkboxes
+                    container.querySelectorAll('input[type="checkbox"]').forEach(c => {
+                        if (c.dataset.toolName === 'Edit' || c.dataset.toolName === 'Write') c.checked = cb.checked;
+                    });
+                    renderCompactView();
+                });
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode('Code Edits (Edit+Write)'));
+                container.appendChild(label);
+            }
+
+            for (const toolName of [...typesInContext].sort()) {
+                const label = document.createElement('label');
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.dataset.toolName = toolName;
+                cb.addEventListener('change', () => onToolFilterChange(toolName, cb.checked));
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(toolName));
+                container.appendChild(label);
+            }
+        }
+
+        function onToolFilterChange(toolName, checked) {
+            // Find all tool_use blocks of this type in context window and mark/unmark
+            for (let i = contextWindowStart; i < allRawLines.length; i++) {
+                const obj = allRawLines[i];
+                if (obj.type === 'assistant' && Array.isArray(obj.message?.content)) {
+                    for (const block of obj.message.content) {
+                        if (block.type === 'tool_use' && block.name === toolName) {
+                            // Mark/unmark the tool_result user message that contains the result
+                            const resultIdx = toolUseToResult[block.id];
+                            if (resultIdx !== undefined) {
+                                if (checked) {
+                                    markedForDeletion.add(resultIdx);
+                                    // Also mark the assistant line containing this tool_use
+                                    markedForDeletion.add(i);
+                                } else {
+                                    markedForDeletion.delete(resultIdx);
+                                    // Only unmark assistant line if no other tool_use blocks in it are marked
+                                    const otherMarked = obj.message.content.some(b =>
+                                        b.type === 'tool_use' && b.name !== toolName &&
+                                        markedForDeletion.has(toolUseToResult[b.id])
+                                    );
+                                    if (!otherMarked) markedForDeletion.delete(i);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            renderCompactView();
+        }
+
+        function renderCompactView() {
+            chat.innerHTML = '';
+            let countShown = 0;
+            let countMarked = 0;
+
+            // Iterate over context window only
+            for (let i = contextWindowStart; i < allRawLines.length; i++) {
+                const obj = allRawLines[i];
+
+                // Skip file-history-snapshot and progress (auto-deleted, never shown)
+                if (obj.type === 'file-history-snapshot' || obj.type === 'progress' || obj.type === 'system') continue;
+
+                if (obj.type !== 'user' && obj.type !== 'assistant') continue;
+
+                if (obj.isMeta) continue;
+                const content = obj.message?.content;
+                if (!content) continue;
+
+                // Handle user messages
+                if (obj.type === 'user') {
+                    let text = '';
+                    let isToolResult = false;
+
+                    if (typeof content === 'string') {
+                        text = content;
+                    } else if (Array.isArray(content)) {
+                        isToolResult = content.some(item => item.type === 'tool_result');
+                        for (const item of content) {
+                            if (item.type === 'tool_result' && item.content) {
+                                if (typeof item.content === 'string') {
+                                    text += `[Tool Result: ${item.tool_use_id?.slice(-8) || 'unknown'}]\n${item.content}\n\n`;
+                                } else if (Array.isArray(item.content)) {
+                                    text += `[Tool Result: ${item.tool_use_id?.slice(-8) || 'unknown'}]\n`;
+                                    for (const c of item.content) {
+                                        if (c.type === 'text' && c.text) text += c.text + '\n';
+                                    }
+                                    text += '\n';
+                                }
+                            } else if (typeof item === 'string') {
+                                text += item + '\n';
+                            } else if (item.type === 'text' && item.text) {
+                                text += item.text + '\n';
+                            }
+                        }
+                    } else {
+                        text = compactJson(JSON.stringify(content, null, 2));
+                    }
+                    if (text.includes('<local-command-caveat>')) continue;
+
+                    const isSummary = text.startsWith('This session is being continued from a previous conversation');
+                    const isMarkedDelete = markedForDeletion.has(i);
+                    const isMarkedReplace = markedForReplace.has(i);
+
+                    // If it's a tool result and marked for deletion via tool filter, hide it
+                    if (isToolResult && isMarkedDelete) {
+                        countMarked++;
+                        continue;
+                    }
+
+                    const msgType = isSummary ? 'summary' : (isToolResult ? 'toolresult' : 'user');
+                    const div = createCompactMessageDiv(msgType, obj.timestamp, text, i, isToolResult);
+
+                    // Tool results: collapsed by default
+                    if (isToolResult && !isMarkedDelete) {
+                        div.classList.add('collapsed');
+                    }
+
+                    chat.appendChild(div);
+                    countShown++;
+                    if (isMarkedDelete || isMarkedReplace) countMarked++;
+                }
+
+                // Handle assistant messages
+                if (obj.type === 'assistant') {
+                    if (Array.isArray(content)) {
+                        // Check if this entire assistant line is marked for deletion via tool filter
+                        if (markedForDeletion.has(i)) {
+                            // Check if there are text blocks we still need to show
+                            const hasText = content.some(b => b.type === 'text' && b.text);
+                            const hasOnlyToolUse = !hasText;
+                            if (hasOnlyToolUse) {
+                                countMarked++;
+                                continue;
+                            }
+                        }
+
+                        for (const block of content) {
+                            if (block.type === 'text' && block.text) {
+                                const isSummary = block.text.startsWith('This session is being continued from a previous conversation');
+                                const msgType = isSummary ? 'summary' : 'assistant';
+                                const div = createCompactMessageDiv(msgType, obj.timestamp, block.text, i, false);
+                                chat.appendChild(div);
+                                countShown++;
+                                if (markedForDeletion.has(i) || markedForReplace.has(i)) countMarked++;
+                            }
+                            if (block.type === 'tool_use') {
+                                // Skip if this tool type is filtered out
+                                const resultIdx = toolUseToResult[block.id];
+                                if (resultIdx !== undefined && markedForDeletion.has(resultIdx)) {
+                                    continue;
+                                }
+                                const div = createCompactToolDiv(block, obj.timestamp, i);
+                                chat.appendChild(div);
+                                countShown++;
+                            }
+                        }
+                    } else if (typeof content === 'string') {
+                        const isSummary = content.startsWith('This session is being continued from a previous conversation');
+                        const msgType = isSummary ? 'summary' : 'assistant';
+                        const div = createCompactMessageDiv(msgType, obj.timestamp, content, i, false);
+                        chat.appendChild(div);
+                        countShown++;
+                        if (markedForDeletion.has(i) || markedForReplace.has(i)) countMarked++;
+                    }
+                }
+            }
+
+            const totalAutoDeleted = [...markedForDeletion].filter(idx => {
+                const obj = allRawLines[idx];
+                return obj && (obj.type === 'file-history-snapshot' || obj.type === 'progress');
+            }).length;
+
+            document.getElementById('compactStats').textContent =
+                `Context window: ${countShown} items shown | ${countMarked} marked for modification | ${totalAutoDeleted} auto-deleted (snapshots/progress)`;
+        }
+
+        function createCompactMessageDiv(type, timestamp, text, rawIdx, isToolResult) {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.dataset.rawIdx = rawIdx;
+
+            const isMarkedDelete = markedForDeletion.has(rawIdx);
+            const isMarkedReplace = markedForReplace.has(rawIdx);
+            if (isMarkedDelete || isMarkedReplace) {
+                div.classList.add('marked-delete');
+            }
+
+            // Delete/mark button for user and assistant text messages
+            let deleteBtn = '';
+            if (type === 'user' || type === 'assistant' || type === 'toolresult') {
+                if (isMarkedDelete || isMarkedReplace) {
+                    deleteBtn = `<button class="delete-toggle undo" onclick="event.stopPropagation(); unmarkMessage(${rawIdx})">UNDO</button>`;
+                } else {
+                    deleteBtn = `<button class="delete-toggle" onclick="event.stopPropagation(); markMessage(${rawIdx}, '${type}')">X</button>`;
+                }
+            }
+
+            const markedLabel = (isMarkedDelete || isMarkedReplace) ? '<span class="marked-label">MARKED FOR DELETION</span>' : '';
+            div.innerHTML = `
+                <div class="msg-header">
+                    <div class="role">${type}</div>
+                    <div class="timestamp">${new Date(timestamp).toLocaleString()}</div>
+                    ${markedLabel}
+                    ${deleteBtn}
+                </div>
+                <div class="content">${escapeHtml(text)}</div>
+            `;
+            return div;
+        }
+
+        function createCompactToolDiv(block, timestamp, rawIdx) {
+            const div = document.createElement('div');
+            const isEdit = block.name === 'Edit' || block.name === 'Write';
+            div.className = `message ${isEdit ? 'edit' : 'tool'}`;
+            div.dataset.rawIdx = rawIdx;
+            div.dataset.toolUseId = block.id;
+
+            let content = '';
+            if (block.name === 'Edit' && block.input) {
+                content = `
+                    <div class="file-path">${escapeHtml(block.input.file_path || '')}</div>
+                    <div class="edit-label">OLD:</div>
+                    <div class="edit-block">${escapeHtml(block.input.old_string || '')}</div>
+                    <div class="edit-label">NEW:</div>
+                    <div class="edit-block">${escapeHtml(block.input.new_string || '')}</div>
+                `;
+            } else if (block.name === 'Write' && block.input) {
+                content = `
+                    <div class="file-path">${escapeHtml(block.input.file_path || '')}</div>
+                    <div class="edit-label">CONTENT:</div>
+                    <div class="edit-block">${escapeHtml(block.input.content || '')}</div>
+                `;
+            } else {
+                content = `<pre>${escapeHtml(compactJson(JSON.stringify(block.input, null, 2)))}</pre>`;
+            }
+
+            div.innerHTML = `
+                <div class="msg-header">
+                    <div class="role">${block.name}</div>
+                    <div class="timestamp">${new Date(timestamp).toLocaleString()}</div>
+                </div>
+                ${content}
+            `;
+            return div;
+        }
+
+        function markMessage(rawIdx, type) {
+            const obj = allRawLines[rawIdx];
+            if (!obj) return;
+
+            if (type === 'toolresult') {
+                // Mark tool result for deletion (will also delete paired tool_use)
+                markedForDeletion.add(rawIdx);
+                // Also mark the assistant messages containing the paired tool_use blocks
+                const useIds = toolResultToUses[rawIdx] || [];
+                for (const useId of useIds) {
+                    const assistIdx = toolUseIdToLineIndex[useId];
+                    if (assistIdx !== undefined) {
+                        markedForDeletion.add(assistIdx);
+                    }
+                }
+            } else {
+                // User or assistant text: mark for content replacement
+                markedForReplace.set(rawIdx, '[removed during manual compaction - not relevant]');
+            }
+            renderCompactView();
+        }
+
+        function unmarkMessage(rawIdx) {
+            markedForDeletion.delete(rawIdx);
+            markedForReplace.delete(rawIdx);
+
+            // If it was a tool result, also unmark associated assistant lines
+            const useIds = toolResultToUses[rawIdx] || [];
+            for (const useId of useIds) {
+                const assistIdx = toolUseIdToLineIndex[useId];
+                if (assistIdx !== undefined) {
+                    markedForDeletion.delete(assistIdx);
+                }
+            }
+
+            renderCompactView();
+        }
+
+        async function getNextBackupName(baseName) {
+            // baseName is e.g. "578a7365-b54a-4ad5-b733-265adb0383a4.jsonl"
+            const stem = baseName.replace(/\.jsonl$/, '');
+
+            if (isElectron && window._loadedFilePath) {
+                // In Electron, check filesystem for existing backups to find next number
+                const dir = window._loadedFilePath.replace(/\/[^/]+$/, '');
+                let num = backupNumber;
+                let candidate;
+                do {
+                    num++;
+                    candidate = `${stem}_BU${String(num).padStart(3, '0')}.jsonl`;
+                } while (await window.electronAPI.fileExists(dir + '/' + candidate));
+                backupNumber = num;
+                return candidate;
+            }
+
+            backupNumber++;
+            const num = String(backupNumber).padStart(3, '0');
+            return `${stem}_BU${num}.jsonl`;
+        }
+
+        async function commitCompaction() {
+            const baseName = window._loadedFileName || 'session.jsonl';
+            const backupName = await getNextBackupName(baseName);
+
+            // Determine backup full path for references
+            let backupFullPath;
+            if (isElectron && window._loadedFilePath) {
+                // Derive backup path next to original file
+                const dir = window._loadedFilePath.replace(/\/[^/]+$/, '');
+                backupFullPath = dir + '/' + backupName;
+            } else {
+                backupFullPath = (window._sessionProjectPath || '') + backupName;
+            }
+
+            if (isElectron && window._loadedFilePath) {
+                if (!confirm(`This will:\n1. Save backup as "${backupName}" next to the original\n2. Overwrite the original with compacted content\n\nContinue?`)) {
+                    backupNumber--;
+                    return;
+                }
+            } else {
+                if (!confirm(`This will:\n1. Download a backup as "${backupName}"\n   (references will point to: ${backupFullPath})\n2. Download the compacted file as "${baseName}"\n\nContinue?`)) {
+                    backupNumber--;
+                    return;
+                }
+            }
+
+            // Build compacted output
+            const output = [];
+
+            for (let i = 0; i < allRawLines.length; i++) {
+                const obj = allRawLines[i];
+                const lineNum = i + 1; // 1-indexed line number in backup file
+
+                // Fully delete file-history-snapshot, progress lines
+                if (obj.type === 'file-history-snapshot' || obj.type === 'progress') continue;
+
+                // Handle lines marked for deletion (tool result+use pairs)
+                // Instead of deleting, REPLACE content with stub pointing to backup
+                if (markedForDeletion.has(i)) {
+                    if (obj.type === 'assistant' && Array.isArray(obj.message?.content)) {
+                        const clone = JSON.parse(JSON.stringify(obj));
+                        clone.message.content = clone.message.content.map(b => {
+                            if (b.type === 'tool_use') {
+                                const resultIdx = toolUseToResult[b.id];
+                                if (resultIdx !== undefined && markedForDeletion.has(resultIdx)) {
+                                    // Replace tool_use input with stub
+                                    return {
+                                        ...b,
+                                        input: { _compacted: `[tool use: ${b.name} - results removed during manual compaction | backup: ${backupFullPath} line ${lineNum}]` }
+                                    };
+                                }
+                            }
+                            return b;
+                        });
+                        output.push(JSON.stringify(clone));
+                        continue;
+                    }
+
+                    if (obj.type === 'user' && Array.isArray(obj.message?.content)) {
+                        // Tool result user message: replace content with stub
+                        const clone = JSON.parse(JSON.stringify(obj));
+                        clone.message.content = clone.message.content.map(item => {
+                            if (item.type === 'tool_result') {
+                                const toolName = toolUseIdToName[item.tool_use_id] || 'unknown';
+                                return {
+                                    ...item,
+                                    content: `[tool use: ${toolName} - results removed during manual compaction | backup: ${backupFullPath} line ${lineNum}]`
+                                };
+                            }
+                            return item;
+                        });
+                        output.push(JSON.stringify(clone));
+                        continue;
+                    }
+                }
+
+                // Replace content for marked-for-replace lines (user/assistant text)
+                if (markedForReplace.has(i)) {
+                    const baseReplacement = markedForReplace.get(i);
+                    const replacement = `${baseReplacement} | backup: ${backupFullPath} line ${lineNum}`;
+                    const clone = JSON.parse(JSON.stringify(obj));
+                    if (typeof clone.message?.content === 'string') {
+                        clone.message.content = replacement;
+                    } else if (Array.isArray(clone.message?.content)) {
+                        clone.message.content = clone.message.content.map(item => {
+                            if (item.type === 'text') return { type: 'text', text: replacement };
+                            if (typeof item === 'string') return replacement;
+                            if (item.type === 'tool_result') {
+                                return { ...item, content: replacement };
+                            }
+                            return item;
+                        });
+                    }
+                    output.push(JSON.stringify(clone));
+                    continue;
+                }
+
+                // Keep line unchanged
+                output.push(JSON.stringify(obj));
+            }
+
+            // Fix parent chain for any lines whose parent was fully removed (snapshots/progress)
+            const parsed = output.map(line => JSON.parse(line));
+            const uuidSet = new Set(parsed.map(p => p.uuid).filter(Boolean));
+            for (let i = 1; i < parsed.length; i++) {
+                if (parsed[i].parentUuid && !uuidSet.has(parsed[i].parentUuid)) {
+                    for (let j = i - 1; j >= 0; j--) {
+                        if (parsed[j].uuid) {
+                            parsed[i].parentUuid = parsed[j].uuid;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            const finalOutput = parsed.map(obj => JSON.stringify(obj)).join('\n') + '\n';
+
+            if (isElectron && window._loadedFilePath) {
+                // Electron: write backup next to original, then overwrite original
+                await window.electronAPI.writeFile(backupFullPath, window._rawFileContent);
+                await window.electronAPI.writeFile(window._loadedFilePath, finalOutput);
+
+                // Reload the compacted content into the viewer
+                window._rawFileContent = finalOutput;
+                alert(`Done!\n\nBackup saved: ${backupFullPath}\nOriginal overwritten with compacted content.\n\nPlease exit your Claude Code session, then resume with:\n  claude -r\nto load the compacted version.`);
+            } else {
+                // Browser fallback: download both files
+                const backupBlob = new Blob([window._rawFileContent], { type: 'application/jsonl' });
+                const backupUrl = URL.createObjectURL(backupBlob);
+                const backupA = document.createElement('a');
+                backupA.href = backupUrl;
+                backupA.download = backupName;
+                backupA.click();
+                URL.revokeObjectURL(backupUrl);
+
+                setTimeout(() => {
+                    const blob = new Blob([finalOutput], { type: 'application/jsonl' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = baseName;
+                    a.click();
+                    URL.revokeObjectURL(url);
+
+                    alert(`Done!\n\nBackup saved as: ${backupName}\nCompacted file saved as: ${baseName}\n\nReplace the original JSONL with the compacted file, then exit your Claude Code session and resume with:\n  claude -r\nto load the compacted version.`);
+                }, 500);
+            }
+        }
+
+        // ---- LOAD PREVIOUS SESSION ----
+
+        async function findPreviousSession() {
+            if (!isElectron || !window._loadedFilePath) return null;
+            const dir = window._loadedFilePath.replace(/\/[^/]+$/, '');
+            const currentFileName = window._loadedFilePath.split('/').pop();
+            const files = await window.electronAPI.listDirJsonl(dir);
+            // files sorted oldest-first by mtime; find the one just before current
+            let prevFile = null;
+            for (const f of files) {
+                if (f.name === currentFileName) break;
+                prevFile = f;
+            }
+            return prevFile;
+        }
+
+        async function loadPreviousSession(e) {
+            const shiftHeld = e.shiftKey;
+
+            if (isElectron && window._loadedFilePath) {
+                // Electron mode: auto-find previous file
+                const btn = e.target;
+                btn.disabled = true;
+                btn.textContent = 'LOADING...';
+
+                const prevFile = await findPreviousSession();
+                if (!prevFile) {
+                    btn.textContent = 'NO PREVIOUS SESSION FOUND';
+                    return;
+                }
+
+                try {
+                    const content = await window.electronAPI.readFile(prevFile.path);
+                    prependOrReplacePrevious(content, prevFile.name, prevFile.path, shiftHeld);
+                } catch (err) {
+                    btn.textContent = 'ERROR: ' + err.message;
+                }
+            } else {
+                // Browser mode: prompt user to select a file
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.jsonl,.json';
+                input.onchange = () => {
+                    const file = input.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        prependOrReplacePrevious(ev.target.result, file.name, null, shiftHeld);
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
+            }
+        }
+
+        function prependOrReplacePrevious(content, fileName, filePath, replaceMode) {
+            const lines = content.split('\n').filter(l => l.trim());
+            const prevRawLines = [];
+            for (const line of lines) {
+                try { prevRawLines.push(JSON.parse(line)); } catch {}
+            }
+            const prevMessages = prevRawLines.filter(obj => obj.type === 'user' || obj.type === 'assistant');
+            if (prevMessages.length === 0) return;
+
+            if (replaceMode) {
+                // Shift+click: replace current with selected session
+                window._loadedFileName = fileName;
+                window._loadedFilePath = filePath;
+                parseAndRender(content);
+            } else {
+                // Normal click: prepend selected above current
+                const spacer = {
+                    _isFileSpacer: true,
+                    _prevFileName: fileName,
+                    _fileName: window._loadedFileName || 'current',
+                };
+                const combined = [...prevMessages, spacer, ...allMessages];
+                allMessages = combined;
+                // Update time range
+                const times = allMessages.filter(m => m.timestamp).map(m => new Date(m.timestamp)).filter(d => !isNaN(d));
+                if (times.length > 0) {
+                    document.getElementById('startTime').value = formatDatetimeLocal(new Date(Math.min(...times)));
+                    document.getElementById('endTime').value = formatDatetimeLocal(new Date(Math.max(...times)));
+                }
+                // Update loaded path so button can chain further back (Electron only)
+                if (filePath) window._loadedFilePath = filePath;
+                renderMessages(allMessages);
+            }
+        }
+
+        // ---- NORMAL MODE RENDERING ----
+
+        function renderMessages(messages) {
+            chat.innerHTML = '';
+            let count = { user: 0, assistant: 0, edits: 0 };
+
+            // Add "Load Previous" button at top (not in compact mode or subagent view)
+            if (!compactMode && subagentStack.length === 0) {
+                const btn = document.createElement('button');
+                btn.className = 'load-prev-btn';
+                btn.textContent = 'LOAD PREVIOUS SESSION';
+                btn.onclick = loadPreviousSession;
+                chat.appendChild(btn);
+            }
+
+            for (const msg of messages) {
+                // Render file spacer between multi-file sessions
+                if (msg._isFileSpacer) {
+                    const spacer = document.createElement('div');
+                    spacer.className = 'message file-spacer';
+                    spacer.innerHTML = `<div class="content">END OF ${escapeHtml(msg._prevFileName)} — START OF ${escapeHtml(msg._fileName)}</div>`;
+                    chat.appendChild(spacer);
+                    continue;
+                }
+
+                if (msg.isMeta) continue;
+
+                const content = msg.message?.content;
+                if (!content) continue;
+
+                // Handle user messages
+                if (msg.type === 'user') {
+                    let text = '';
+                    let isToolResult = false;
+
+                    if (typeof content === 'string') {
+                        text = content;
+                    } else if (Array.isArray(content)) {
+                        // Handle tool results
+                        isToolResult = content.some(item => item.type === 'tool_result');
+                        for (const item of content) {
+                            if (item.type === 'tool_result' && item.content) {
+                                text += `[Tool Result: ${item.tool_use_id?.slice(-8) || 'unknown'}]\n${item.content}\n\n`;
+                            } else if (typeof item === 'string') {
+                                text += item + '\n';
+                            } else if (item.type === 'text' && item.text) {
+                                text += item.text + '\n';
+                            }
+                        }
+                    } else {
+                        text = compactJson(JSON.stringify(content, null, 2));
+                    }
+                    if (text.includes('<local-command-caveat>')) continue;
+
+                    const isSummary = text.startsWith('This session is being continued from a previous conversation');
+                    const msgType = isSummary ? 'summary' : (isToolResult ? 'toolresult' : 'user');
+                    const div = createMessageDiv(msgType, msg.timestamp, text);
+                    chat.appendChild(div);
+                    count.user++;
+                }
+
+                // Handle assistant messages
+                if (msg.type === 'assistant') {
+                    if (Array.isArray(content)) {
+                        for (const block of content) {
+                            if (block.type === 'text' && block.text) {
+                                const isSummary = block.text.startsWith('This session is being continued from a previous conversation');
+                                const msgType = isSummary ? 'summary' : 'assistant';
+                                const div = createMessageDiv(msgType, msg.timestamp, block.text);
+                                chat.appendChild(div);
+                                count.assistant++;
+                            }
+                            if (block.type === 'tool_use') {
+                                const div = createToolDiv(block, msg.timestamp);
+                                chat.appendChild(div);
+                                if (block.name === 'Edit' || block.name === 'Write') count.edits++;
+                            }
+                        }
+                    } else if (typeof content === 'string') {
+                        const isSummary = content.startsWith('This session is being continued from a previous conversation');
+                        const msgType = isSummary ? 'summary' : 'assistant';
+                        const div = createMessageDiv(msgType, msg.timestamp, content);
+                        chat.appendChild(div);
+                        count.assistant++;
+                    }
+                }
+            }
+
+            stats.textContent = `Showing: ${count.user} user, ${count.assistant} assistant, ${count.edits} edits`;
+        }
+
+        function createMessageDiv(type, timestamp, text) {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.innerHTML = `
+                <div class="msg-header">
+                    <div class="role">${type}</div>
+                    <div class="timestamp">${new Date(timestamp).toLocaleString()}</div>
+                </div>
+                <div class="content">${escapeHtml(text)}</div>
+            `;
+            return div;
+        }
+
+        function createToolDiv(block, timestamp) {
+            const div = document.createElement('div');
+            const isEdit = block.name === 'Edit' || block.name === 'Write';
+            div.className = `message ${isEdit ? 'edit' : 'tool'}`;
+
+            let content = '';
+            if (block.name === 'Edit' && block.input) {
+                content = `
+                    <div class="file-path">${escapeHtml(block.input.file_path || '')}</div>
+                    <div class="edit-label">OLD:</div>
+                    <div class="edit-block">${escapeHtml(block.input.old_string || '')}</div>
+                    <div class="edit-label">NEW:</div>
+                    <div class="edit-block">${escapeHtml(block.input.new_string || '')}</div>
+                `;
+            } else if (block.name === 'Write' && block.input) {
+                content = `
+                    <div class="file-path">${escapeHtml(block.input.file_path || '')}</div>
+                    <div class="edit-label">CONTENT:</div>
+                    <div class="edit-block">${escapeHtml(block.input.content || '')}</div>
+                `;
+            } else {
+                content = `<pre>${escapeHtml(compactJson(JSON.stringify(block.input, null, 2)))}</pre>`;
+            }
+
+            const isAgent = block.name === 'Task' && block.input && block.input.subagent_type;
+            const agentBtn = (isAgent && toolUseIdToAgentId[block.id])
+                ? `<button class="view-subagent-btn" onclick="event.stopPropagation(); openSubagent('${block.id}')">VIEW SUBAGENT</button>`
+                : '';
+
+            div.innerHTML = `
+                <div class="msg-header">
+                    <div class="role">${block.name}</div>
+                    <div class="timestamp">${new Date(timestamp).toLocaleString()}${agentBtn}</div>
+                </div>
+                ${content}
+            `;
+            return div;
+        }
+
+        function compactJson(text) {
+            const lines = text.split('\n');
+            const result = [];
+            for (let i = 0; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
+                if ((trimmed === '{' || trimmed === '[') && i + 1 < lines.length) {
+                    // Opening bracket only — prepend to next line
+                    result.push(lines[i] + ' ' + lines[i + 1].trimStart());
+                    i++;
+                } else if ((trimmed === '}' || trimmed === ']' || trimmed === '},' || trimmed === '],') && result.length > 0) {
+                    // Closing bracket only — append to previous line
+                    result[result.length - 1] += ' ' + trimmed;
+                } else {
+                    result.push(lines[i]);
+                }
+            }
+            return result.join('\n');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/\\n/g, '\n')  // Convert escaped newlines to actual newlines
+                .replace(/^[\s\n]+/, '')  // Strip leading whitespace/newlines
+                .replace(/[\s\n]+$/, ''); // Strip trailing whitespace/newlines
+        }
+
+        let collapsed = false;
+
+        function toggleCollapse() {
+            const btn = document.getElementById('collapseToggle');
+            if (collapsed) {
+                document.querySelectorAll('.message.collapsed').forEach(el => {
+                    el.classList.remove('collapsed');
+                });
+                collapsed = false;
+                btn.textContent = 'COLLAPSE';
+            } else {
+                document.querySelectorAll('.message:not(.user):not(.file-spacer)').forEach(el => {
+                    el.classList.add('collapsed');
+                });
+                collapsed = true;
+                btn.textContent = 'EXPAND';
+            }
+        }
+
+        // Click to toggle collapse on non-user messages
+        chat.addEventListener('click', (e) => {
+            // Don't toggle if clicking a button
+            if (e.target.closest('button')) return;
+            const msg = e.target.closest('.message:not(.user):not(.file-spacer)');
+            if (msg) {
+                msg.classList.toggle('collapsed');
+            }
+        });
+
+        // === Subagent Navigation ===
+        function pushSubagentState() {
+            subagentStack.push({
+                allMessages, allRawLines, multiFileMessages,
+                scrollY: window.scrollY,
+                fileName: window._loadedFileName,
+                filePath: window._loadedFilePath,
+                startTime: document.getElementById('startTime').value,
+                endTime: document.getElementById('endTime').value,
+                chatHTML: chat.innerHTML,
+                compactMode, collapsed,
+                toolUseToResult, toolResultToUses, toolUseIdToLineIndex,
+                toolUseIdToName, toolUseIdToAgentId, foundToolTypes,
+                contextWindowStart, markedForDeletion, markedForReplace,
+                backupNumber, currentFileEarliestTime,
+            });
+        }
+
+        function popSubagentState() {
+            if (subagentStack.length === 0) return;
+            const s = subagentStack.pop();
+            allMessages = s.allMessages;
+            allRawLines = s.allRawLines;
+            multiFileMessages = s.multiFileMessages;
+            window._loadedFileName = s.fileName;
+            window._loadedFilePath = s.filePath;
+            document.getElementById('startTime').value = s.startTime;
+            document.getElementById('endTime').value = s.endTime;
+            chat.innerHTML = s.chatHTML;
+            compactMode = s.compactMode;
+            collapsed = s.collapsed;
+            toolUseToResult = s.toolUseToResult;
+            toolResultToUses = s.toolResultToUses;
+            toolUseIdToLineIndex = s.toolUseIdToLineIndex;
+            toolUseIdToName = s.toolUseIdToName;
+            toolUseIdToAgentId = s.toolUseIdToAgentId;
+            foundToolTypes = s.foundToolTypes;
+            contextWindowStart = s.contextWindowStart;
+            markedForDeletion = s.markedForDeletion;
+            markedForReplace = s.markedForReplace;
+            backupNumber = s.backupNumber;
+            currentFileEarliestTime = s.currentFileEarliestTime;
+            updateSubagentBanner();
+            window.scrollTo(0, s.scrollY);
+        }
+
+        function updateSubagentBanner() {
+            const banner = document.getElementById('subagentBanner');
+            if (subagentStack.length > 0) {
+                const depth = subagentStack.length;
+                banner.textContent = depth > 1
+                    ? `SUBAGENT VIEWER - depth ${depth} (esc to return)`
+                    : 'SUBAGENT VIEWER (esc to return)';
+                banner.classList.add('visible');
+            } else {
+                banner.classList.remove('visible');
+            }
+        }
+
+        async function openSubagent(toolUseId) {
+            const agentId = toolUseIdToAgentId[toolUseId];
+            if (!agentId) return;
+
+            if (isElectron && window._loadedFilePath) {
+                const sessionDir = window._loadedFilePath.replace(/\.jsonl$/, '');
+                const subagentPath = sessionDir + '/subagents/agent-' + agentId + '.jsonl';
+                try {
+                    const content = await window.electronAPI.readFile(subagentPath);
+                    pushSubagentState();
+                    window._loadedFileName = 'agent-' + agentId + '.jsonl';
+                    window._loadedFilePath = subagentPath;
+                    parseAndRender(content);
+                    updateSubagentBanner();
+                    window.scrollTo(0, 0);
+                } catch (err) {
+                    alert('Could not load subagent file:\n' + subagentPath + '\n\n' + err.message);
+                }
+            } else {
+                const sessionName = (window._loadedFileName || '').replace(/\.jsonl$/, '');
+                const expectedPath = sessionName + '/subagents/agent-' + agentId + '.jsonl';
+                showSubagentDropzone(expectedPath);
+            }
+        }
+
+        function showSubagentDropzone(expectedPath) {
+            const existing = document.querySelector('.subagent-dropzone');
+            if (existing) existing.remove();
+
+            const overlay = document.createElement('div');
+            overlay.className = 'subagent-dropzone';
+            overlay.innerHTML = `
+                <div>Drop the subagent JSONL file here:</div>
+                <div class="drop-path">${escapeHtml(expectedPath)}</div>
+                <div class="drop-area">drop .jsonl file here</div>
+                <div class="drop-cancel">cancel (esc)</div>
+            `;
+            document.body.appendChild(overlay);
+
+            const dropArea = overlay.querySelector('.drop-area');
+            const cancelBtn = overlay.querySelector('.drop-cancel');
+
+            dropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropArea.classList.add('dragover');
+            });
+            dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
+            dropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        overlay.remove();
+                        pushSubagentState();
+                        window._loadedFileName = file.name;
+                        window._loadedFilePath = null;
+                        parseAndRender(ev.target.result);
+                        updateSubagentBanner();
+                        window.scrollTo(0, 0);
+                    };
+                    reader.readAsText(file);
+                }
+            });
+
+            cancelBtn.addEventListener('click', () => overlay.remove());
+            const escHandler = (e) => {
+                if (e.key === 'Escape') {
+                    overlay.remove();
+                    document.removeEventListener('keydown', escHandler);
+                }
+            };
+            document.addEventListener('keydown', escHandler);
+        }
+
+        // === Search ===
+        let searchMatches = [];
+        let searchCurrentIdx = -1;
+
+        function openSearch() {
+            const bar = document.getElementById('searchBar');
+            bar.classList.add('visible');
+            const input = document.getElementById('searchInput');
+            input.focus();
+            input.select();
+        }
+
+        function closeSearch() {
+            document.getElementById('searchBar').classList.remove('visible');
+            document.getElementById('searchInput').value = '';
+            document.getElementById('searchInfo').textContent = '';
+            clearSearchHighlights();
+            searchMatches = [];
+            searchCurrentIdx = -1;
+        }
+
+        function clearSearchHighlights() {
+            chat.querySelectorAll('.search-highlight, .search-highlight-current').forEach(el => {
+                const parent = el.parentNode;
+                parent.replaceChild(document.createTextNode(el.textContent), el);
+                parent.normalize();
+            });
+        }
+
+        function performSearch(query) {
+            clearSearchHighlights();
+            searchMatches = [];
+            searchCurrentIdx = -1;
+            if (!query) {
+                document.getElementById('searchInfo').textContent = '';
+                return;
+            }
+
+            const walker = document.createTreeWalker(chat, NodeFilter.SHOW_TEXT, null);
+            const textNodes = [];
+            while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+            const lowerQuery = query.toLowerCase();
+            for (const node of textNodes) {
+                const text = node.textContent;
+                const lower = text.toLowerCase();
+                let startIdx = 0;
+                const parts = [];
+                let lastEnd = 0;
+
+                while ((startIdx = lower.indexOf(lowerQuery, startIdx)) !== -1) {
+                    if (startIdx > lastEnd) {
+                        parts.push({ text: text.slice(lastEnd, startIdx), highlight: false });
+                    }
+                    parts.push({ text: text.slice(startIdx, startIdx + query.length), highlight: true });
+                    lastEnd = startIdx + query.length;
+                    startIdx = lastEnd;
+                }
+
+                if (parts.length > 0) {
+                    if (lastEnd < text.length) {
+                        parts.push({ text: text.slice(lastEnd), highlight: false });
+                    }
+                    const frag = document.createDocumentFragment();
+                    for (const part of parts) {
+                        if (part.highlight) {
+                            const span = document.createElement('span');
+                            span.className = 'search-highlight';
+                            span.textContent = part.text;
+                            searchMatches.push(span);
+                            frag.appendChild(span);
+                        } else {
+                            frag.appendChild(document.createTextNode(part.text));
+                        }
+                    }
+                    node.parentNode.replaceChild(frag, node);
+                }
+            }
+
+            document.getElementById('searchInfo').textContent = searchMatches.length > 0
+                ? `${searchMatches.length} matches`
+                : 'no matches';
+
+            if (searchMatches.length > 0) {
+                searchCurrentIdx = 0;
+                highlightCurrent();
+            }
+        }
+
+        function highlightCurrent() {
+            searchMatches.forEach(el => el.className = 'search-highlight');
+            if (searchCurrentIdx >= 0 && searchCurrentIdx < searchMatches.length) {
+                const el = searchMatches[searchCurrentIdx];
+                el.className = 'search-highlight-current';
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                document.getElementById('searchInfo').textContent =
+                    `${searchCurrentIdx + 1} / ${searchMatches.length}`;
+            }
+        }
+
+        function searchNext() {
+            if (searchMatches.length === 0) return;
+            searchCurrentIdx = (searchCurrentIdx + 1) % searchMatches.length;
+            highlightCurrent();
+        }
+
+        function searchPrev() {
+            if (searchMatches.length === 0) return;
+            searchCurrentIdx = (searchCurrentIdx - 1 + searchMatches.length) % searchMatches.length;
+            highlightCurrent();
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            performSearch(e.target.value);
+        });
+
+        document.getElementById('searchInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) searchPrev(); else searchNext();
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeSearch();
+            }
+        });
+
+        // === Global Keyboard Shortcuts ===
+        document.addEventListener('keydown', (e) => {
+            // Cmd+F / Ctrl+F: open search
+            if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+                e.preventDefault();
+                openSearch();
+                return;
+            }
+
+            if (e.key === 'Escape') {
+                // Priority: search bar > subagent dropzone > compact mode > subagent stack
+                if (document.getElementById('searchBar').classList.contains('visible')) {
+                    e.preventDefault();
+                    closeSearch();
+                } else if (document.querySelector('.subagent-dropzone')) {
+                    // handled by its own listener
+                } else if (compactMode) {
+                    e.preventDefault();
+                    exitCompactMode();
+                } else if (subagentStack.length > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    popSubagentState();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

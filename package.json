@@ -1,0 +1,27 @@
+{
+  "name": "claude-history-reader",
+  "version": "1.0.0",
+  "description": "Viewer for Claude Code session history files (JSONL format)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.claude.history-reader",
+    "productName": "Claude History Reader",
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}
