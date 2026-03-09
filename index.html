@@ -617,6 +617,8 @@
             transition: background 0.1s;
         }
         .load-prev-btn:hover { background: rgba(224, 209, 94, 0.1); }
+        footer { text-align: center; padding: 12px; font-size: 11px; color: var(--text-faint); }
+        footer a { color: var(--text-dim); }
     </style>
 </head>
 <body>
@@ -648,8 +650,9 @@
         <button onclick="searchPrev()">PREV</button>
         <span class="search-info" id="searchInfo"></span>
     </div>
-    <div id="dropzone">drop .jsonl file here<br><br><small style="color:#aaa">Session files are in ~/.claude/projects/&lt;project&gt;/<br>Use drag+drop in browser mode. <a href="https://github.com/jameskgrover/claude-history-reader/releases" target="_blank" style="color:var(--yellow)">Download the app</a> for direct loading.</small></div>
+    <div id="dropzone">drop .jsonl file here<br><br><small style="color:#aaa">Session files are in ~/.claude/projects/&lt;project&gt;/<br><span id="browserHint">Use drag+drop in browser mode. <a href="https://github.com/jameskgrover/claude-history-reader/releases" target="_blank" style="color:var(--yellow)">Download the app</a> for direct loading.</span></small></div>
     <div class="chat" id="chat"></div>
+    <footer>Provided as-is with no warranty. <a href="LICENSE" target="_blank">MIT License</a></footer>
 
     <script>
         let allMessages = [];
@@ -670,6 +673,7 @@
         let subagentStack = [];  // stack of saved states for subagent navigation
 
         const isElectron = !!window.electronAPI;
+        if (isElectron) document.getElementById('browserHint').style.display = 'none';
 
         const dropzone = document.getElementById('dropzone');
         const fileInput = document.getElementById('fileInput');
