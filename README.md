@@ -58,6 +58,10 @@ Claude Code stores session history in `~/.claude/projects/<project-slug>/<sessio
 
 Fork, branch, PR. The entire app is in `index.html` — inline CSS and JS, no build step, no framework.
 
+## Disclaimer
+
+This tool can modify your chat history files (via Manual Compact). **Always back up your session files before use.** The authors are not responsible for any data loss or corruption. See the [MIT License](LICENSE.txt) for full terms.
+
 ## License
 
-MIT
+MIT — see [LICENSE.txt](LICENSE.txt)
