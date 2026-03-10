@@ -37,7 +37,7 @@ https://signalrecords.co.uk/apps/claude-history-viewer/index.html
 4. auto-mark tool results etc for removal (recommended to choose SELECT ALL, possibly unchecking 'code edits' if anything critical is ongoing).
 5. press COMMIT to write a compacted JSONL (with a renamed backup of the original one).
 6. Unedited version is retained and linked at each deletion point, in case Claude needs to reread anything that was removed.
-7. Resume with 'claude -r'. Initially it will not show context having been reduced, but should self-correct after 1 message. Do not let context get down to 0% or this will fail. If context is very low (1-2%), you should send a very short message that doesn't require a long answer, just enough to get it to update its 'context' reading (something like "Wait - do not compact" should work best).
+7. Resume with 'claude -r'. Initially it will not show context having been reduced, but should self-correct after 1 message. Do not let context get down to 0% or this will fail. If context is very low (<3%), send this message "Do NOT compact. Say 'ok' then do nothing else".
 
 - **Electron extras** — project picker, auto-load from `~/.claude/projects/`, direct file read/write for compaction
 
